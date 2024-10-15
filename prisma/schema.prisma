@@ -1,0 +1,130 @@
+// schema.prisma
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+model Admin {
+  id             Int            @id @default(autoincrement())
+  email          String         @unique
+  password       String
+  role           String          @default("ADMIN")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model Salesperson {
+  id             Int            @id @default(autoincrement())
+  email          String         @unique
+  password       String
+  name           String
+  phoneNumber    String         @unique
+  employeeId     String         @unique
+  pan            String
+  address        String         
+  role           String          @default("SALESPERSON")
+  shopkeepers    Shopkeeper[]   @relation("SalespersonShopkeepers")
+  orders         Order[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model Distributor {
+  id             Int            @id @default(autoincrement())
+  name           String
+  email          String         @unique
+  password       String
+  role           String         @default("DISTRIBUTOR") 
+  phoneNumber    String         @unique
+  gstNumber      String?
+  pan            String?
+  imageUrl       String?
+  address        String
+  orders         Order[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model Product {
+  id             Int            @id @default(autoincrement())
+  name           String
+  distributorPrice Float
+  retailerPrice  Float
+  mrp            Float
+  category       String
+  skuId          String         @unique
+  inventoryCount Int
+  imageUrl       String?
+  orders         OrderItem[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model Shopkeeper {
+  id             Int            @id @default(autoincrement())
+  name           String
+  ownerName      String
+  contactNumber  String         @unique
+  email          String?
+  gpsLocation    String?
+  imageUrl       String?
+  videoUrl       String?
+  preferredDeliverySlot String?
+  salespersonId  Int?           // Nullable in case no salesperson is assigned
+  salesperson    Salesperson?   @relation("SalespersonShopkeepers", fields: [salespersonId], references: [id])
+  orders         Order[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model Order {
+  id             Int            @id @default(autoincrement())
+  shopkeeperId   Int
+  distributorId  Int
+  salespersonId  Int
+  orderDate      DateTime       @default(now())
+  deliveryDate   DateTime
+  deliverySlot   String
+  paymentTerm    PaymentTerm
+  orderNote      String?
+  totalAmount    Float
+  status         OrderStatus     @default(PENDING)
+  items          OrderItem[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  shopkeeper     Shopkeeper      @relation(fields: [shopkeeperId], references: [id])
+  distributor    Distributor     @relation(fields: [distributorId], references: [id])
+  salesperson     Salesperson     @relation(fields: [salespersonId], references: [id])
+}
+
+model OrderItem {
+  id             Int            @id @default(autoincrement())
+  orderId        Int
+  productId      Int
+  quantity       Int
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  order          Order           @relation(fields: [orderId], references: [id])
+  product        Product         @relation(fields: [productId], references: [id])
+}
+
+enum PaymentTerm {
+  COD
+  CREDIT
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  DISPATCHED
+  DELIVERED
+  CANCELED
+}
