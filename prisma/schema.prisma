@@ -51,19 +51,40 @@ model Distributor {
   updatedAt      DateTime       @updatedAt
 }
 
+model Category {
+  id             Int            @id @default(autoincrement())
+  name           String         @unique
+  products       Product[]      // One-to-many relationship with products
+}
+
 model Product {
   id             Int            @id @default(autoincrement())
+  categoryId     Int             // Foreign key for the Category
   name           String
   distributorPrice Float
   retailerPrice  Float
   mrp            Float
-  category       String
   skuId          String         @unique
   inventoryCount Int
   imageUrl       String?
+  variants       ProductVariant[] 
   orders         OrderItem[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+  category       Category        @relation(fields: [categoryId], references: [id]) // Foreign key to Category
+}
+
+model ProductVariant {
+  id             Int            @id @default(autoincrement())
+  productId      Int
+  variantName    String         // Name for the variant (e.g., "Size", "Color")
+  variantValue   String         // Specific value (e.g., "Large", "Red")
+  price          Float          // Price of the specific variant
+  stockQuantity  Int            // Quantity available for this variant
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  product        Product         @relation(fields: [productId], references: [id]) // Foreign key to Product
 }
 
 model Shopkeeper {
@@ -108,6 +129,7 @@ model OrderItem {
   id             Int            @id @default(autoincrement())
   orderId        Int
   productId      Int
+  variantId      Int?  
   quantity       Int
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt

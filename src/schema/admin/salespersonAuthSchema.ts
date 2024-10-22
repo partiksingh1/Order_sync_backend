@@ -8,8 +8,8 @@ export const salespersonSignupSchema = z.object({
   phoneNumber: z.string().min(10, { message: "Phone number must be at least 10 characters long" }) // Add phone number validation
     .max(15, { message: "Phone number must be at most 15 characters long" }), // Optional: limit max length
   employeeId: z.string().min(1, { message: "Employee ID is required" }), // Add employee ID validation
-  pan: z.string().length(10, { message: "PAN must be exactly 10 characters long" }), // Assuming PAN is a 10 character string
-  address: z.string().min(5, { message: "address is required" })
+  pan: z.string(), // Assuming PAN is a 10 character string
+  address: z.string(),
 });
 
 // Salesperson Login Validation Schema

@@ -1,15 +1,25 @@
 import { z } from 'zod';
 
-// Product Validation Schema
+export const productVariantSchema = z.object({
+  variantName: z.string().min(1, 'Variant name is required'),
+  variantValue: z.string().min(1, 'Variant value is required'),
+  price: z.number().positive('Price must be greater than zero'),
+  stockQuantity: z.number().int().nonnegative('Stock quantity must be a non-negative integer'),
+});
+
 export const productSchema = z.object({
-  name: z.string().min(1, { message: "Product name is required" }), // Name is required and must be a non-empty string
-  distributorPrice: z.number().positive({ message: "Distributor price must be a positive number" }), // Must be a positive number
-  retailerPrice: z.number().positive({ message: "Retailer price must be a positive number" }), // Must be a positive number
-  mrp: z.number().positive({ message: "MRP must be a positive number" }), // Must be a positive number
-  category: z.string().min(1, { message: "Category is required" }), // Category is required and must be a non-empty string
-  skuId: z.string().min(1, { message: "SKU ID is required" }).optional(),
-  inventoryCount: z.number().int().nonnegative({ message: "Inventory count must be a non-negative integer" }), // Must be a non-negative integer
-  imageUrl: z.string().url({ message: "Invalid image URL" }).optional(), // Image URL must be a valid URL (optional)
+  name: z.string().min(1, 'Product name is required'),
+  distributorPrice: z.number().positive('Distributor price must be greater than zero'),
+  retailerPrice: z.number().positive('Retailer price must be greater than zero'),
+  mrp: z.number().positive('MRP must be greater than zero'),
+  categoryId: z.number().int().nonnegative('Category ID must be a non-negative integer'),
+  inventoryCount: z.number().int().nonnegative('Inventory count must be a non-negative integer'),
+  imageUrl: z.string().url().optional(),
+  variants: z.array(productVariantSchema).min(1, 'At least one variant is required'), // Ensure at least one variant
 });
 
 
+// Category schema
+export const categorySchema = z.object({
+  name: z.string().min(1, 'Category name is required'), // Category name
+});

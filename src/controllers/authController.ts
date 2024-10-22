@@ -63,3 +63,31 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 };
+
+export const validateToken = async (req: Request, res: Response): Promise<void> => {
+    const token = req.headers.authorization?.split(' ')[1];
+  
+    if (!token) {
+      res.status(401).json({ error: 'Token is required' });
+      return;
+    }
+  
+    try {
+      const decoded: any = jwt.verify(token, process.env.JWT_SECRET || "your_jwt_secret");
+      
+      // Check if user exists in the database
+      const user = await prisma.admin.findUnique({ where: { id: decoded.id } }) ||
+                   await prisma.salesperson.findUnique({ where: { id: decoded.id } }) ||
+                   await prisma.distributor.findUnique({ where: { id: decoded.id } });
+  
+      if (!user) {
+        res.status(401).json({ error: 'User not found' });
+        return;
+      }
+  
+      res.status(200).json({ user });
+    } catch (error) {
+      console.error('Token validation error:', error);
+      res.status(401).json({ error: 'Invalid token' });
+    }
+  };
