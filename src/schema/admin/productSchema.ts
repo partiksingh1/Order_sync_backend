@@ -15,7 +15,7 @@ export const productSchema = z.object({
   categoryId: z.number().int().nonnegative('Category ID must be a non-negative integer'),
   inventoryCount: z.number().int().nonnegative('Inventory count must be a non-negative integer'),
   imageUrl: z.string().url().optional(),
-  variants: z.array(productVariantSchema).min(1, 'At least one variant is required'), // Ensure at least one variant
+  variants: z.array(productVariantSchema).min(1, 'At least one variant is required').optional(), // Ensure at least one variant
 });
 
 

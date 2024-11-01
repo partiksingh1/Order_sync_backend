@@ -4,95 +4,108 @@ import { prisma } from '../../config/db';
 import { orderSchema } from '../../schema/salesperson/orderSchema';
 import { v2 as cloudinary } from 'cloudinary';
 import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
 
-const upload = multer({ dest: 'uploads/' });
-cloudinary.config({
-  cloud_name: 'dcrkqaq20',
-  api_key: '945669894999448',
-  api_secret: '0Zn8LRb9E6PCNzvAWMZe0_JgFVU',
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = 'uploads/';
+    // Create uploads directory if it doesn't exist
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir);
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
 });
+
+const upload = multer({ storage: storage });
+
+// Configure cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dcrkqaq20',
+  api_key: process.env.CLOUDINARY_API_KEY || '945669894999448',
+  api_secret: process.env.CLOUDINARY_API_SECRET || '0Zn8LRb9E6PCNzvAWMZe0_JgFVU',
+});
+
 
 
 // Create Shopkeeper Function with Zod Validation
 
 export const createShopkeeper = [
-  upload.single('image'), // Use multer to handle 'image' field from form-data
+  upload.single('image'),
   async (req: Request, res: Response): Promise<void> => {
     try {
       // Validate request body
-      const {
-        name,
-        ownerName,
-        contactNumber,
-        email,
-        gpsLocation,
-        preferredDeliverySlot,
-        salespersonId,
-      } = req.body;
+      const schema = {
+        name: String,
+        ownerName: String,
+        contactNumber: String,
+        email: String,
+        gpsLocation: String,
+        preferredDeliverySlot: String,
+        salespersonId: String,
+      };
 
-      if (
-        !name ||
-        !ownerName ||
-        !contactNumber ||
-        !email ||
-        !gpsLocation ||
-        !preferredDeliverySlot ||
-        !salespersonId
-      ) {
-        res.status(400).json({ message: 'All fields are required' });
-        return;
+      // Basic validation
+      for (const [key, type] of Object.entries(schema)) {
+        if (!req.body[key] || typeof req.body[key] !== type.name.toLowerCase()) {
+          res.status(400).json({ message: `Invalid or missing field: ${key}` });
+          return;
+        }
       }
 
-      // Convert salespersonId to an integer
-      const salespersonIdInt = parseInt(salespersonId, 10);
-
-      if (isNaN(salespersonIdInt)) {
-        res.status(400).json({ message: 'Invalid salesperson ID' });
-        return;
-      }
-
-      // Upload image to Cloudinary
       let imageUrl = '';
+      
+      // Handle image upload to Cloudinary
       if (req.file) {
-        const result = await cloudinary.uploader.upload(req.file.path);
-        if (!result || !result.secure_url) {
+        try {
+          const result = await cloudinary.uploader.upload(req.file.path, {
+            folder: 'shopkeepers',
+            resource_type: 'auto',
+          });
+          imageUrl = result.secure_url;
+          
+          // Clean up temporary file
+          fs.unlinkSync(req.file.path);
+        } catch (uploadError) {
+          console.error('Cloudinary upload error:', uploadError);
           res.status(500).json({ message: 'Image upload failed' });
           return;
         }
-        imageUrl = result.secure_url; // Store the uploaded image URL
       }
-      console.log("imageurl",imageUrl);
-      
 
-      // Proceed with the shopkeeper creation
+      // Create shopkeeper in database
       const newShopkeeper = await prisma.shopkeeper.create({
         data: {
-          name,
-          ownerName,
-          contactNumber,
-          email,
-          gpsLocation,
-          imageUrl, // Save the Cloudinary image URL
-          videoUrl: '', // Add logic if needed for video handling later
-          preferredDeliverySlot,
-          salespersonId: salespersonIdInt, // Use the converted integer
+          name: req.body.name,
+          ownerName: req.body.ownerName,
+          contactNumber: req.body.contactNumber,
+          email: req.body.email,
+          gpsLocation: req.body.gpsLocation,
+          imageUrl,
+          preferredDeliverySlot: req.body.preferredDeliverySlot,
+          salespersonId: parseInt(req.body.salespersonId, 10),
         },
       });
 
       res.status(201).json({
         message: 'Shopkeeper created successfully',
-        shopkeeper: {
-          id: newShopkeeper.id,
-          name: newShopkeeper.name,
-          ownerName: newShopkeeper.ownerName,
-          contactNumber: newShopkeeper.contactNumber,
-          email: newShopkeeper.email,
-          imageUrl, // Include the image URL in the response
-        },
+        shopkeeper: newShopkeeper,
       });
     } catch (error) {
       console.error('Error creating shopkeeper:', error);
-      res.status(500).json({ message: 'Internal Server Error' });
+      res.status(500).json({ 
+        message: 'Internal Server Error',
+        error: process.env.NODE_ENV === 'development' ? error : undefined 
+      });
+    } finally {
+      // Clean up uploaded file if it exists and hasn't been deleted
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
     }
   },
 ];
@@ -299,7 +312,8 @@ export const getShopkeepersBySalesperson = async (req:Request, res:Response) => 
   
       // Check if any shopkeepers were found
       if (shopkeepers.length === 0) {
-        return res.status(404).json({ message: 'No shopkeepers found for this salesperson.' });
+         res.status(404).json({ message: 'No shopkeepers found for this salesperson.' });
+         return;
       }
   
       // Respond with the shopkeepers data
