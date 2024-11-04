@@ -52,31 +52,34 @@ export const getDistributorOrders = async (req: Request, res: Response): Promise
         },
       },
     });
+
+    // Transform orders to the desired response format
     const responseOrders = orders.map(order => ({
-        id: order.id,
-        deliveryDate: order.deliveryDate,
-        totalAmount: order.totalAmount,
-        status: order.status,
-        shopkeeper: {
-          name: order.shopkeeper.name,
-          contactNumber: order.shopkeeper.contactNumber,
-        },
-        items: order.items.map(item => ({
-          productName: item.product.name,
-          quantity: item.quantity,
-          price: item.product.retailerPrice,
-        })),
-      }));
+      id: order.id,
+      deliveryDate: order.deliveryDate,
+      totalAmount: order.totalAmount,
+      status: order.status,
+      shopkeeper: {
+        name: order.shopkeeper?.name, // Use optional chaining
+        contactNumber: order.shopkeeper?.contactNumber, // Use optional chaining
+      },
+      items: order.items.map(item => ({
+        productName: item.product?.name, // Use optional chaining
+        quantity: item.quantity,
+        price: item.product?.retailerPrice, // Use optional chaining
+      })),
+    }));
 
     res.status(200).json({
       message: 'Orders retrieved successfully',
-      responseOrders,
+      orders: responseOrders, // Rename to 'orders' for clarity
     });
   } catch (error) {
-    console.error(error); // Log the error for debugging
+    console.error('Error fetching orders:', error); // Log the error for debugging
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
+
 export const updateOrderDetails = async (req: Request, res: Response): Promise<void> => {
   // Extract the token from the Authorization header
   const token = req.headers.authorization?.split(' ')[1]; // Assuming Bearer token

@@ -299,7 +299,7 @@ export const getAllProducts = async (req: Request, res: Response): Promise<void>
     }
   };
   
-export const getShopkeepersBySalesperson = async (req:Request, res:Response) => {
+  export const getShopkeepersBySalesperson = async (req: Request, res: Response) => {
     const { salespersonId } = req.params;
   
     try {
@@ -312,8 +312,9 @@ export const getShopkeepersBySalesperson = async (req:Request, res:Response) => 
   
       // Check if any shopkeepers were found
       if (shopkeepers.length === 0) {
-         res.status(404).json({ message: 'No shopkeepers found for this salesperson.' });
-         return;
+        // Change this line to return an empty array with a 200 status
+        res.status(200).json([]); // Respond with an empty array
+        return;
       }
   
       // Respond with the shopkeepers data
@@ -323,3 +324,4 @@ export const getShopkeepersBySalesperson = async (req:Request, res:Response) => 
       res.status(500).json({ message: 'Internal server error.' });
     }
   };
+  
