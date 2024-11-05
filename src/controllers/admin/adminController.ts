@@ -591,11 +591,19 @@ export const editDistributor = async (req: Request, res: Response): Promise<void
 
 export const getShops = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Fetch all shopkeeper from the database
-    const shopkeeper= await prisma.shopkeeper.findMany();
+    // Fetch all shopkeepers with their salesperson's name
+    const shopkeepers = await prisma.shopkeeper.findMany({
+      include: {
+        salesperson: {
+          select: {
+            name: true,  // Only fetch the name of the salesperson
+          },
+        },
+      },
+    });
 
-    // Return the shopkeeper in the response
-    res.status(200).json(shopkeeper);
+    // Return the shopkeeper data with salesperson name
+    res.status(200).json(shopkeepers);
   } catch (error) {
     console.error('Error fetching shopkeeper:', error);
     res.status(500).json({ message: 'Internal Server Error' });
