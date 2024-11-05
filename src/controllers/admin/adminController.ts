@@ -455,12 +455,12 @@ export const getAllOrders = async (req: Request, res: Response): Promise<void> =
                 ...item,
                 variant: variant
                   ? `${variant.variantName}: ${variant.variantValue}`
-                  : 'No Variant', // Handle if variant data is missing
+                  : '', // Handle if variant data is missing
               };
             } else {
               return {
                 ...item,
-                variant: 'No Variant', // If there's no variant ID
+                variant: '', // If there's no variant ID
               };
             }
           })
