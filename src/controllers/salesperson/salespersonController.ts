@@ -51,6 +51,9 @@ export const createShopkeeper = [
 
       // Basic validation
       for (const [key, type] of Object.entries(schema)) {
+        // Skip validation for fields that are optional or have default values
+        if (key === 'preferredDeliverySlot') continue;
+      
         if (!req.body[key] || typeof req.body[key] !== type.name.toLowerCase()) {
           res.status(400).json({ message: `Invalid or missing field: ${key}` });
           return;
@@ -86,7 +89,7 @@ export const createShopkeeper = [
           email: req.body.email,
           gpsLocation: req.body.gpsLocation,
           imageUrl,
-          preferredDeliverySlot: req.body.preferredDeliverySlot,
+          preferredDeliverySlot : '11AM - 2PM',
           salespersonId: parseInt(req.body.salespersonId, 10),
         },
       });
@@ -130,6 +133,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     paymentTerm,
     orderNote,
     items,
+    partialPayment,
   } = validation.data; // Safe access to validated data
 
   try {
@@ -195,9 +199,21 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
           create: items.map(item => ({
             productId: item.productId,
             quantity: item.quantity,
-            ...(item.variantId && { variantId: item.variantId }), // Include variantId if present
+            ...(item.variantId && { variantId: item.variantId }),
           })),
         },
+        ...(paymentTerm === 'PARTIAL' && partialPayment && {
+          partialPayment: {
+            create: {
+              initialAmount: partialPayment.initialAmount,
+              remainingAmount: partialPayment.remainingAmount,
+              dueDate: new Date(partialPayment.dueDate),
+            },
+          },
+        }),
+      },
+      include: {
+        partialPayment: true,
       },
     });
 
@@ -226,56 +242,69 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 };
 
 export const getSalespersonOrders = async (req: Request, res: Response): Promise<void> => {
-    const { salespersonId } = req.params;
-  
-    try {
-      const orders = await prisma.order.findMany({
-        where: { salespersonId: parseInt(salespersonId) },
-        select: {
-          id: true,
-          orderDate: true,
-          deliveryDate: true,
-          deliverySlot: true,
-          paymentTerm: true,
-          orderNote: true,
-          totalAmount: true,
-          status: true,
-          items: {
-            select: {
-              id: true,
-              orderId: true,
-              quantity: true,
-              product: {
-                select: {
-                  name: true,
-                  distributorPrice: true,
-                  retailerPrice: true,
-                  mrp: true,
-                },
-              },
-            },
-          },
-          shopkeeper: {
-            select: {
-              name: true,
-              ownerName: true,
-              contactNumber: true,
-            },
-          },
-          distributor: {
-            select: {
-              name: true,
-              phoneNumber: true,
-            },
+  const { salespersonId } = req.params;
+
+  try {
+    const orders = await prisma.order.findMany({
+      where: { salespersonId: parseInt(salespersonId, 10) },
+      select: {
+        id: true,
+        orderDate: true,
+        deliveryDate: true,
+        deliverySlot: true,
+        paymentTerm: true,
+        orderNote: true,
+        totalAmount: true,
+        status: true, // Already included
+        partialPayment: { // New addition
+          select: {
+            id: true,
+            initialAmount: true,
+            remainingAmount: true,
+            dueDate: true,
+            paymentStatus: true,
+            createdAt: true,
+            updatedAt: true,
           },
         },
-      });
-  
-      res.status(200).json(orders);
-    } catch (error) {
-      res.status(500).json({ message: 'Failed to fetch orders', error });
-    }
-  };
+        items: {
+          select: {
+            id: true,
+            orderId: true,
+            quantity: true,
+            product: {
+              select: {
+                name: true,
+                distributorPrice: true,
+                retailerPrice: true,
+                mrp: true,
+              },
+            },
+            variantId: true, // Include variantId if needed
+          },
+        },
+        shopkeeper: {
+          select: {
+            name: true,
+            ownerName: true,
+            contactNumber: true,
+          },
+        },
+        distributor: {
+          select: {
+            name: true,
+            phoneNumber: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json(orders);
+  } catch (error) {
+    console.error('Error fetching orders:', error);
+    res.status(500).json({ message: 'Failed to fetch orders', error });
+  }
+};
 export const getAllProducts = async (req: Request, res: Response): Promise<void> => {
     try {
       // Fetch all products from the database

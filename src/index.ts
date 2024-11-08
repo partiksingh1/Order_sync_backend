@@ -19,14 +19,14 @@ app.use("/api/v1/auth", authRoute);
 app.use("/api/v1/admin", adminRouter);
 app.use("/api/v1/salesperson", salespersonRoute);
 app.use("/api/v1/distributor", distributorRoute);
-const keepAlive = () => {
-    https.get('https://speedsales.onrender.com/api/v1', (res) => {
-        console.log(`Keep-alive pinged: ${res.statusCode}`);
-    }).on('error', (err) => {
-        console.error(`Error pinging: ${err.message}`);
-    });
-};
-setInterval(keepAlive, 10 * 60 * 1000);
+// const keepAlive = () => {
+//     https.get('https://speedsales.onrender.com/api/v1', (res) => {
+//         console.log(`Keep-alive pinged: ${res.statusCode}`);
+//     }).on('error', (err) => {
+//         console.error(`Error pinging: ${err.message}`);
+//     });
+// };
+// setInterval(keepAlive, 10 * 60 * 1000);
 
 // Start the server
 app.listen(port, () => {

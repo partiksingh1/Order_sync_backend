@@ -116,6 +116,7 @@ model Order {
   orderNote      String?
   totalAmount    Float
   status         OrderStatus     @default(PENDING)
+  partialPayment PartialPayment? // New relation
   items          OrderItem[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -123,6 +124,23 @@ model Order {
   shopkeeper     Shopkeeper      @relation(fields: [shopkeeperId], references: [id])
   distributor    Distributor     @relation(fields: [distributorId], references: [id])
   salesperson     Salesperson     @relation(fields: [salespersonId], references: [id])
+}
+model PartialPayment {
+  id                Int      @id @default(autoincrement())
+  orderId          Int      @unique
+  initialAmount    Float
+  remainingAmount  Float
+  dueDate          DateTime
+  paymentStatus    PaymentStatus @default(PENDING)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  order            Order    @relation(fields: [orderId], references: [id])
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
 }
 
 model OrderItem {
@@ -141,6 +159,7 @@ model OrderItem {
 enum PaymentTerm {
   COD
   CREDIT
+  PARTIAL
 }
 
 enum OrderStatus {
