@@ -247,43 +247,11 @@ export const getSalespersonOrders = async (req: Request, res: Response): Promise
   try {
     const orders = await prisma.order.findMany({
       where: { salespersonId: parseInt(salespersonId, 10) },
-      select: {
-        id: true,
-        orderDate: true,
-        deliveryDate: true,
-        deliverySlot: true,
-        paymentTerm: true,
-        orderNote: true,
-        totalAmount: true,
-        status: true, // Already included
-        items: {
-          select: {
-            id: true,
-            orderId: true,
-            quantity: true,
-            product: {
-              select: {
-                name: true,
-                distributorPrice: true,
-                retailerPrice: true,
-                mrp: true,
-              },
-            },
-          },
-        },
-        shopkeeper: {
-          select: {
-            name: true,
-            ownerName: true,
-            contactNumber: true,
-          },
-        },
-        distributor: {
-          select: {
-            name: true,
-            phoneNumber: true,
-          },
-        },
+      include: {
+        partialPayment: true, // Add this line
+        items: true,
+        shopkeeper: true,
+        distributor: true,
       },
     });
 
