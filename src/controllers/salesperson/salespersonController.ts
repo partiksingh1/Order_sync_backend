@@ -256,17 +256,6 @@ export const getSalespersonOrders = async (req: Request, res: Response): Promise
         orderNote: true,
         totalAmount: true,
         status: true, // Already included
-        partialPayment: { // New addition
-          select: {
-            id: true,
-            initialAmount: true,
-            remainingAmount: true,
-            dueDate: true,
-            paymentStatus: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
         items: {
           select: {
             id: true,
@@ -280,7 +269,6 @@ export const getSalespersonOrders = async (req: Request, res: Response): Promise
                 mrp: true,
               },
             },
-            variantId: true, // Include variantId if needed
           },
         },
         shopkeeper: {
