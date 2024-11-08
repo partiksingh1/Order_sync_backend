@@ -435,9 +435,10 @@ export const getAllOrders = async (req: Request, res: Response): Promise<void> =
             },
           },
         },
-        partialPayment: true, // Include partial payment details
+        partialPayment: true, // Make sure this is correctly included
       },
     });
+    
 
     // Fetch variant details and format response data
     const responseData = await Promise.all(
