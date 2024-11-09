@@ -435,10 +435,11 @@ export const getAllOrders = async (req: Request, res: Response): Promise<void> =
             },
           },
         },
-      },
+        partialPayment: true, // Include partial payment details
+      }
     });
 
-    // Fetch variant details for each order item with a variantId
+    // Fetch variant details and format response data
     const responseData = await Promise.all(
       orders.map(async (order) => {
         const itemsWithVariants = await Promise.all(
@@ -466,7 +467,18 @@ export const getAllOrders = async (req: Request, res: Response): Promise<void> =
           })
         );
 
+        // Format partial payment details
+        const partialPaymentDetails = order.partialPayment
+          ? {
+              initialAmount: order.partialPayment.initialAmount,
+              remainingAmount: order.partialPayment.remainingAmount,
+              dueDate: order.partialPayment.dueDate,
+              paymentStatus: order.partialPayment.paymentStatus,
+            }
+          : null;
+
         return {
+          orderId:order.id,
           shopName: order.shopkeeper.name,
           employeeName: order.salesperson?.name || 'Not Assigned',
           distributorName: order.distributor?.name || 'Not Assigned',
@@ -482,6 +494,7 @@ export const getAllOrders = async (req: Request, res: Response): Promise<void> =
           deliveryDate: order.deliveryDate,
           deliverySlot: order.deliverySlot,
           status: order.status,
+          partialPayment: partialPaymentDetails, // Add partial payment details
         };
       })
     );
@@ -492,6 +505,7 @@ export const getAllOrders = async (req: Request, res: Response): Promise<void> =
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
+
 
 
 // Controller to get all distributors

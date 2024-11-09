@@ -4,7 +4,6 @@ import jwt from 'jsonwebtoken'; // Ensure you have jwt package installed
 
 // Controller to get Distributor Orders
 export const getDistributorOrders = async (req: Request, res: Response): Promise<void> => {
-  // Extract the token from the Authorization header
   const token = req.headers.authorization?.split(' ')[1]; // Assuming Bearer token
 
   if (!token) {
@@ -13,75 +12,101 @@ export const getDistributorOrders = async (req: Request, res: Response): Promise
   }
 
   try {
-    // Verify and decode the token to get the distributor ID
-    const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret'); // Use your actual secret
-
-    const distributorId = decoded.id; // Adjust according to your token structure
+    const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
+    const distributorId = decoded.id;
 
     if (!distributorId) {
       res.status(400).json({ message: 'Invalid distributor ID from token' });
       return;
     }
 
-    // Fetch orders from the database
     const orders = await prisma.order.findMany({
-      where: {
-        distributorId: distributorId,
-      },
-      include: {
+      where: { distributorId },
+      select: {
+        id: true,
+        deliveryDate: true,
+        totalAmount: true,
+        status: true,
+        paymentTerm: true, // Include paymentTerm directly
         shopkeeper: {
-          select: {
-            name: true,
-            contactNumber: true,
-          },
-        },
-        salesperson: {
-          select: {
-            name: true,
-          },
+          select: { name: true, contactNumber: true },
         },
         items: {
-          include: {
+          select: {
+            quantity: true,
             product: {
               select: {
-                name: true,
-                retailerPrice: true,
+                name: true, // Product name
+                retailerPrice: true, // Retailer price
               },
             },
           },
         },
+        partialPayment: {
+          select: {
+            initialAmount: true,
+            remainingAmount: true,
+            dueDate: true,
+            paymentStatus: true,
+          },
+        },
       },
     });
-
-    // Transform orders to the desired response format
-    const responseOrders = orders.map(order => ({
+    
+    // Transform the items to match the expected output format
+    const transformedOrders = orders.map(order => ({
       id: order.id,
       deliveryDate: order.deliveryDate,
       totalAmount: order.totalAmount,
       status: order.status,
+      paymentTerm: order.paymentTerm, // Include paymentTerm in the output
+      shopkeeper: order.shopkeeper,
+      items: order.items.map(item => ({
+        productName: item.product.name, // Get the product name
+        quantity: item.quantity,
+        price: item.product.retailerPrice, // Get the retailer price
+      })),
+      partialPayment: order.partialPayment,
+    }));
+    
+    console.log(transformedOrders);
+
+    const responseOrders = orders.map(order => ({
+      id: order.id,
+      deliveryDate: order.deliveryDate,
+      totalAmount: order.totalAmount,
+      paymentTerm:order.paymentTerm,
+      status: order.status,
       shopkeeper: {
-        name: order.shopkeeper?.name, // Use optional chaining
-        contactNumber: order.shopkeeper?.contactNumber, // Use optional chaining
+        name: order.shopkeeper?.name,
+        contactNumber: order.shopkeeper?.contactNumber,
       },
       items: order.items.map(item => ({
-        productName: item.product?.name, // Use optional chaining
+        productName: item.product?.name,
         quantity: item.quantity,
-        price: item.product?.retailerPrice, // Use optional chaining
+        price: item.product?.retailerPrice,
       })),
+      partialPayment: order.partialPayment
+        ? {
+            initialAmount: order.partialPayment.initialAmount,
+            remainingAmount: order.partialPayment.remainingAmount,
+            dueDate: order.partialPayment.dueDate,
+            paymentStatus: order.partialPayment.paymentStatus,
+          }
+        : null,
     }));
 
     res.status(200).json({
       message: 'Orders retrieved successfully',
-      orders: responseOrders, // Rename to 'orders' for clarity
+      orders: responseOrders,
     });
   } catch (error) {
-    console.error('Error fetching orders:', error); // Log the error for debugging
+    console.error('Error fetching orders:', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
 export const updateOrderDetails = async (req: Request, res: Response): Promise<void> => {
-  // Extract the token from the Authorization header
   const token = req.headers.authorization?.split(' ')[1]; // Assuming Bearer token
 
   if (!token) {
@@ -90,9 +115,8 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
   }
 
   try {
-    // Verify and decode the token to get the distributor ID
-    const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret'); // Use your actual secret
-    const distributorId = decoded.id; // Adjust according to your token structure
+    const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
+    const distributorId = decoded.id;
 
     if (!distributorId) {
       res.status(400).json({ message: 'Invalid distributor ID from token' });
@@ -100,53 +124,57 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
     }
 
     const { orderId } = req.params;
-    const { deliveryDate, deliverySlot, status } = req.body;
+    const { deliveryDate, deliverySlot, status, partialPayment } = req.body;
 
-    // Validate input (optional, based on business logic)
-    if (!deliveryDate && !deliverySlot && !status) {
-      res.status(400).json({ message: 'At least one of deliveryDate, deliverySlot, or status must be provided' });
+    if (!deliveryDate && !deliverySlot && !status && !partialPayment) {
+      res.status(400).json({ message: 'At least one of deliveryDate, deliverySlot, status, or partialPayment must be provided' });
       return;
     }
 
-    // Check if the order exists and belongs to the distributor
-    const order = await prisma.order.findUnique({
-      where: {
-        id: parseInt(orderId),
-      },
-    });
+    const order = await prisma.order.findUnique({ where: { id: parseInt(orderId) } });
 
     if (!order) {
       res.status(404).json({ message: 'Order not found' });
       return;
     }
 
-    // Ensure the distributor is authorized to update the order
     if (order.distributorId !== distributorId) {
       res.status(403).json({ message: 'You are not authorized to update this order' });
       return;
     }
 
-    // Update the delivery date, delivery slot, and status if provided
     const updatedData: any = {};
 
-    if (deliveryDate) {
-      updatedData.deliveryDate = new Date(deliveryDate); // Convert the date string to a Date object
-    }
-    if (deliverySlot) {
-      updatedData.deliverySlot = deliverySlot;
-    }
-    if (status) {
-      updatedData.status = status;
+    if (deliveryDate) updatedData.deliveryDate = new Date(deliveryDate);
+    if (deliverySlot) updatedData.deliverySlot = deliverySlot;
+    if (status) updatedData.status = status;
+
+    if (partialPayment) {
+      const { initialAmount, remainingAmount, dueDate, paymentStatus } = partialPayment;
+
+      await prisma.partialPayment.upsert({
+        where: { orderId: parseInt(orderId) },
+        update: {
+          initialAmount: initialAmount || undefined,
+          remainingAmount: remainingAmount || undefined,
+          dueDate: dueDate ? new Date(dueDate) : undefined,
+          paymentStatus: paymentStatus || undefined,
+        },
+        create: {
+          orderId: parseInt(orderId),
+          initialAmount,
+          remainingAmount,
+          dueDate: new Date(dueDate),
+          paymentStatus,
+        },
+      });
     }
 
     const updatedOrder = await prisma.order.update({
-      where: {
-        id: parseInt(orderId),
-      },
+      where: { id: parseInt(orderId) },
       data: updatedData,
     });
 
-    // Send success response
     res.status(200).json({
       message: 'Order details updated successfully',
       order: {
@@ -157,7 +185,76 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
       },
     });
   } catch (error) {
-    console.error('Error updating order:', error); // Log the error for debugging
+    console.error('Error updating order:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+// Controller to update partial payment by order ID
+export const updatePartialPayment = async (req: Request, res: Response): Promise<void> => {
+  const token = req.headers.authorization?.split(' ')[1]; // Assuming Bearer token
+
+  if (!token) {
+    res.status(401).json({ message: 'Authorization token is required' });
+    return;
+  }
+
+  try {
+    const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
+    const distributorId = decoded.id;
+
+    if (!distributorId) {
+      res.status(400).json({ message: 'Invalid distributor ID from token' });
+      return;
+    }
+
+    const { orderId } = req.params;
+    const { initialAmount, remainingAmount, dueDate, paymentStatus } = req.body;
+
+    if (!initialAmount && !remainingAmount && !dueDate && !paymentStatus) {
+      res.status(400).json({ message: 'At least one of initialAmount, remainingAmount, dueDate, or paymentStatus must be provided' });
+      return;
+    }
+
+    const order = await prisma.order.findUnique({ where: { id: parseInt(orderId) } });
+
+    if (!order) {
+      res.status(404).json({ message: 'Order not found' });
+      return;
+    }
+
+    if (order.distributorId !== distributorId) {
+      res.status(403).json({ message: 'You are not authorized to update this order' });
+      return;
+    }
+
+    const updatedPartialPayment = await prisma.partialPayment.upsert({
+      where: { orderId: parseInt(orderId) },
+      update: {
+        initialAmount: initialAmount || undefined,
+        remainingAmount: remainingAmount || undefined,
+        dueDate: dueDate ? new Date(dueDate) : undefined,
+        paymentStatus: paymentStatus || undefined,
+      },
+      create: {
+        orderId: parseInt(orderId),
+        initialAmount: initialAmount || 0,
+        remainingAmount: remainingAmount || 0,
+        dueDate: dueDate ? new Date(dueDate) : new Date(),
+        paymentStatus: paymentStatus || 'pending',
+      },
+    });
+
+    res.status(200).json({
+      message: 'Partial payment updated successfully',
+      partialPayment: {
+        initialAmount: updatedPartialPayment.initialAmount,
+        remainingAmount: updatedPartialPayment.remainingAmount,
+        dueDate: updatedPartialPayment.dueDate,
+        paymentStatus: updatedPartialPayment.paymentStatus,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating partial payment:', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
