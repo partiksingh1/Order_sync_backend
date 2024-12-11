@@ -44,7 +44,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const token = jwt.sign(
       { id: user.id, email: user.email, role:user.role },
       "your_jwt_secret",
-      { expiresIn: '24h' }
     );
 
     // Return the user info (excluding the password) and the token
