@@ -20,62 +20,56 @@ export const getDistributorOrders = async (req: Request, res: Response): Promise
       return;
     }
 
-    const orders = await prisma.order.findMany({
-      where: { distributorId },
-      select: {
-        id: true,
-        deliveryDate: true,
-        totalAmount: true,
-        status: true,
-        paymentTerm: true, // Include paymentTerm directly
-        shopkeeper: {
-          select: { name: true, contactNumber: true },
-        },
-        items: {
-          select: {
-            quantity: true,
-            product: {
-              select: {
-                name: true, // Product name
-                retailerPrice: true, // Retailer price
+    // // Pagination parameters
+    // const page = parseInt(req.query.page as string) || 1;
+    // const limit = parseInt(req.query.limit as string) || 10;
+    // const skip = (page - 1) * limit;
+
+    const [orders, totalOrders] = await Promise.all([
+      prisma.order.findMany({
+        where: { distributorId },
+        // skip,
+        // take: limit,
+        select: {
+          id: true,
+          deliveryDate: true,
+          totalAmount: true,
+          status: true,
+          paymentTerm: true,
+          shopkeeper: {
+            select: { name: true, contactNumber: true },
+          },
+          items: {
+            select: {
+              quantity: true,
+              product: {
+                select: {
+                  name: true,
+                  retailerPrice: true,
+                },
               },
             },
           },
-        },
-        partialPayment: {
-          select: {
-            initialAmount: true,
-            remainingAmount: true,
-            dueDate: true,
-            paymentStatus: true,
+          partialPayment: {
+            select: {
+              initialAmount: true,
+              remainingAmount: true,
+              dueDate: true,
+              paymentStatus: true,
+            },
           },
         },
-      },
-    });
-    
-    // Transform the items to match the expected output format
-    const transformedOrders = orders.map(order => ({
-      id: order.id,
-      deliveryDate: order.deliveryDate,
-      totalAmount: order.totalAmount,
-      status: order.status,
-      paymentTerm: order.paymentTerm, // Include paymentTerm in the output
-      shopkeeper: order.shopkeeper,
-      items: order.items.map(item => ({
-        productName: item.product.name, // Get the product name
-        quantity: item.quantity,
-        price: item.product.retailerPrice, // Get the retailer price
-      })),
-      partialPayment: order.partialPayment,
-    }));
-    
-    console.log(transformedOrders);
+      }),
+      prisma.order.count({
+        where: { distributorId },
+      }),
+    ]);
 
     const responseOrders = orders.map(order => ({
       id: order.id,
       deliveryDate: order.deliveryDate,
       totalAmount: order.totalAmount,
-      paymentTerm:order.paymentTerm,
+      paymentTerm: order.paymentTerm,
       status: order.status,
       shopkeeper: {
         name: order.shopkeeper?.name,
@@ -98,6 +92,9 @@ export const getDistributorOrders = async (req: Request, res: Response): Promise
 
     res.status(200).json({
       message: 'Orders retrieved successfully',
+      // currentPage: page,
+      // totalPages: Math.ceil(totalOrders / limit),
+      totalOrders,
       orders: responseOrders,
     });
   } catch (error) {
@@ -105,6 +102,7 @@ export const getDistributorOrders = async (req: Request, res: Response): Promise
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
+
 
 export const updateOrderDetails = async (req: Request, res: Response): Promise<void> => {
   const token = req.headers.authorization?.split(' ')[1]; // Assuming Bearer token
@@ -124,10 +122,10 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
     }
 
     const { orderId } = req.params;
-    const { deliveryDate, deliverySlot, status, partialPayment } = req.body;
+    const { deliveryDate, deliverySlot, status, partialPayment, items } = req.body;
 
-    if (!deliveryDate && !deliverySlot && !status && !partialPayment) {
-      res.status(400).json({ message: 'At least one of deliveryDate, deliverySlot, status, or partialPayment must be provided' });
+    if (!deliveryDate && !deliverySlot && !status && !partialPayment && !items) {
+      res.status(400).json({ message: 'At least one of deliveryDate, deliverySlot, status, partialPayment, or items must be provided' });
       return;
     }
 
@@ -170,6 +168,65 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
       });
     }
 
+    let totalAmount = 0; // Variable to store the total amount of the order
+
+    // If items are provided, update the order item quantities
+    if (items && Array.isArray(items)) {
+      for (const item of items) {
+        const { productId, variantId, quantity } = item;
+
+        if (!productId || !quantity) {
+          res.status(400).json({ message: 'productId and quantity are required for each item' });
+          return;
+        }
+
+        const orderItem = await prisma.orderItem.findFirst({
+          where: {
+            orderId: parseInt(orderId),
+            productId,
+            variantId: variantId || undefined,
+          },
+        });
+
+        if (!orderItem) {
+          res.status(404).json({ message: `Order item with productId ${productId} not found in this order` });
+          return;
+        }
+
+        // Fetch product details including price
+        const product = await prisma.product.findUnique({
+          where: { id: productId },
+          include: { variants: true }, // Include variants if necessary
+        });
+
+        if (!product) {
+          res.status(404).json({ message: `Product with ID ${productId} not found` });
+          return;
+        }
+
+        const variant = product.variants.find(v => v.id === variantId);
+
+        // If variant is found, update the order item
+        if (variant) {
+          await prisma.orderItem.update({
+            where: { id: orderItem.id },
+            data: {
+              quantity,
+            },
+          });
+
+          // Update the total amount based on the quantity and price of this variant
+          totalAmount += variant.price * quantity;
+        } else {
+          // If no variant found, use the base product price
+          totalAmount += product.retailerPrice * quantity;
+        }
+      }
+    }
+
+    // Update the total amount for the order
+    updatedData.totalAmount = totalAmount;
+
     const updatedOrder = await prisma.order.update({
       where: { id: parseInt(orderId) },
       data: updatedData,
@@ -182,6 +239,7 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
         deliveryDate: updatedOrder.deliveryDate,
         deliverySlot: updatedOrder.deliverySlot,
         status: updatedOrder.status,
+        totalAmount: updatedOrder.totalAmount, // Include updated totalAmount
       },
     });
   } catch (error) {
@@ -189,6 +247,7 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
+
 // Controller to update partial payment by order ID
 export const updatePartialPayment = async (req: Request, res: Response): Promise<void> => {
   const token = req.headers.authorization?.split(' ')[1]; // Assuming Bearer token
