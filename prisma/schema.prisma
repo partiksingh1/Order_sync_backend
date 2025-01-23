@@ -116,6 +116,7 @@ model Order {
   orderNote      String?
   totalAmount    Float
   status         OrderStatus     @default(PENDING)
+  confirmationPhotoUrl String?
   partialPayment PartialPayment? // New relation
   items          OrderItem[]
   createdAt      DateTime       @default(now())
@@ -164,7 +165,7 @@ enum PaymentTerm {
 
 enum OrderStatus {
   PENDING
-  PROCESSING
+  CONFIRMED
   DISPATCHED
   DELIVERED
   CANCELED

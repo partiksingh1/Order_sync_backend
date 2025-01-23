@@ -20,10 +20,10 @@ export const getDistributorOrders = async (req: Request, res: Response): Promise
       return;
     }
 
-    // // Pagination parameters
-    // const page = parseInt(req.query.page as string) || 1;
-    // const limit = parseInt(req.query.limit as string) || 10;
-    // const skip = (page - 1) * limit;
+    // Pagination parameters (optional, you can uncomment if needed)
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
 
     const [orders, totalOrders] = await Promise.all([
       prisma.order.findMany({
@@ -44,10 +44,12 @@ export const getDistributorOrders = async (req: Request, res: Response): Promise
               quantity: true,
               product: {
                 select: {
+                  id: true, // Include productId
                   name: true,
                   retailerPrice: true,
                 },
               },
+              variantId: true, // Include variantId
             },
           },
           partialPayment: {
@@ -76,6 +78,8 @@ export const getDistributorOrders = async (req: Request, res: Response): Promise
         contactNumber: order.shopkeeper?.contactNumber,
       },
       items: order.items.map(item => ({
+        productId: item.product?.id, // Include productId
+        variantId: item.variantId,   // Include variantId
         productName: item.product?.name,
         quantity: item.quantity,
         price: item.product?.retailerPrice,
@@ -92,8 +96,8 @@ export const getDistributorOrders = async (req: Request, res: Response): Promise
 
     res.status(200).json({
       message: 'Orders retrieved successfully',
-      // currentPage: page,
-      // totalPages: Math.ceil(totalOrders / limit),
+      currentPage: page,
+      totalPages: Math.ceil(totalOrders / limit),
       totalOrders,
       orders: responseOrders,
     });
@@ -102,6 +106,7 @@ export const getDistributorOrders = async (req: Request, res: Response): Promise
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
+
 
 
 export const updateOrderDetails = async (req: Request, res: Response): Promise<void> => {
@@ -177,6 +182,7 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
 
         if (!productId || !quantity) {
           res.status(400).json({ message: 'productId and quantity are required for each item' });
+          console.log("productId and quantity are required for each item");
           return;
         }
 
