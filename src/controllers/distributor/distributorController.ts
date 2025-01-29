@@ -1,6 +1,22 @@
 import { Request, Response } from 'express';
 import { prisma } from '../../config/db';
 import jwt from 'jsonwebtoken'; // Ensure you have jwt package installed
+import { v2 as cloudinary } from 'cloudinary';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
+import * as stream from 'stream';
+
+
+const upload = multer({ storage: multer.memoryStorage() }).single('file');
+
+// Configure cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dcrkqaq20',
+  api_key: process.env.CLOUDINARY_API_KEY || '945669894999448',
+  api_secret: process.env.CLOUDINARY_API_SECRET || '0Zn8LRb9E6PCNzvAWMZe0_JgFVU',
+});
+
 
 // Controller to get Distributor Orders
 export const getDistributorOrders = async (req: Request, res: Response): Promise<void> => {
@@ -106,9 +122,6 @@ export const getDistributorOrders = async (req: Request, res: Response): Promise
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
-
-
-
 export const updateOrderDetails = async (req: Request, res: Response): Promise<void> => {
   const token = req.headers.authorization?.split(' ')[1]; // Assuming Bearer token
 
@@ -127,12 +140,7 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
     }
 
     const { orderId } = req.params;
-    const { deliveryDate, deliverySlot, status, partialPayment, items } = req.body;
-
-    if (!deliveryDate && !deliverySlot && !status && !partialPayment && !items) {
-      res.status(400).json({ message: 'At least one of deliveryDate, deliverySlot, status, partialPayment, or items must be provided' });
-      return;
-    }
+    const { items, status } = req.body; // Get items and status from request body
 
     const order = await prisma.order.findUnique({ where: { id: parseInt(orderId) } });
 
@@ -146,34 +154,15 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    const updatedData: any = {};
+    let totalAmount = order.totalAmount; // Start with the current total amount
 
-    if (deliveryDate) updatedData.deliveryDate = new Date(deliveryDate);
-    if (deliverySlot) updatedData.deliverySlot = deliverySlot;
-    if (status) updatedData.status = status;
-
-    if (partialPayment) {
-      const { initialAmount, remainingAmount, dueDate, paymentStatus } = partialPayment;
-
-      await prisma.partialPayment.upsert({
-        where: { orderId: parseInt(orderId) },
-        update: {
-          initialAmount: initialAmount || undefined,
-          remainingAmount: remainingAmount || undefined,
-          dueDate: dueDate ? new Date(dueDate) : undefined,
-          paymentStatus: paymentStatus || undefined,
-        },
-        create: {
-          orderId: parseInt(orderId),
-          initialAmount,
-          remainingAmount,
-          dueDate: new Date(dueDate),
-          paymentStatus,
-        },
+    // Update status if provided
+    if (status) {
+      await prisma.order.update({
+        where: { id: parseInt(orderId) },
+        data: { status }, // Update the status
       });
     }
-
-    let totalAmount = 0; // Variable to store the total amount of the order
 
     // If items are provided, update the order item quantities
     if (items && Array.isArray(items)) {
@@ -182,7 +171,6 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
 
         if (!productId || !quantity) {
           res.status(400).json({ message: 'productId and quantity are required for each item' });
-          console.log("productId and quantity are required for each item");
           return;
         }
 
@@ -190,7 +178,7 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
           where: {
             orderId: parseInt(orderId),
             productId,
-            variantId: variantId || undefined,
+            variantId: variantId || undefined, // Handles both cases
           },
         });
 
@@ -210,10 +198,11 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
           return;
         }
 
+        // Check for the variant
         const variant = product.variants.find(v => v.id === variantId);
 
-        // If variant is found, update the order item
         if (variant) {
+          // Update the order item with the new quantity
           await prisma.orderItem.update({
             where: { id: orderItem.id },
             data: {
@@ -221,39 +210,35 @@ export const updateOrderDetails = async (req: Request, res: Response): Promise<v
             },
           });
 
-          // Update the total amount based on the quantity and price of this variant
-          totalAmount += variant.price * quantity;
+          // Update total amount using variant price
+          totalAmount += (variant.price * quantity) - (orderItem.quantity * (variant.price || product.retailerPrice)); // Adjust total amount
         } else {
-          // If no variant found, use the base product price
-          totalAmount += product.retailerPrice * quantity;
+          // Update the order item without a variant
+          await prisma.orderItem.update({
+            where: { id: orderItem.id },
+            data: {
+              quantity,
+            },
+          });
+
+          // Update total amount using base product price
+          totalAmount += (product.retailerPrice * quantity) - (orderItem.quantity * product.retailerPrice); // Adjust total amount
         }
       }
     }
 
-    // Update the total amount for the order
-    updatedData.totalAmount = totalAmount;
-
-    const updatedOrder = await prisma.order.update({
+    // Update the total amount for the order if it has changed
+    await prisma.order.update({
       where: { id: parseInt(orderId) },
-      data: updatedData,
+      data: { totalAmount }, // Update the total amount
     });
 
-    res.status(200).json({
-      message: 'Order details updated successfully',
-      order: {
-        id: updatedOrder.id,
-        deliveryDate: updatedOrder.deliveryDate,
-        deliverySlot: updatedOrder.deliverySlot,
-        status: updatedOrder.status,
-        totalAmount: updatedOrder.totalAmount, // Include updated totalAmount
-      },
-    });
+    res.status(200).json({ message: 'Order updated successfully', totalAmount });
   } catch (error) {
     console.error('Error updating order:', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
-
 // Controller to update partial payment by order ID
 export const updatePartialPayment = async (req: Request, res: Response): Promise<void> => {
   const token = req.headers.authorization?.split(' ')[1]; // Assuming Bearer token
@@ -322,4 +307,98 @@ export const updatePartialPayment = async (req: Request, res: Response): Promise
     console.error('Error updating partial payment:', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
+};
+
+export const updateConfirmationPhotoUrl = async (req: Request, res: Response): Promise<void> => {
+  upload(req, res, async (err) => {
+    if (err) {
+      res.status(400).json({ message: 'Error uploading image', error: err.message });
+      return;
+    }
+
+    console.log('Uploaded File:', req.file);  // Log for debugging purposes
+
+    if (!req.file) {
+      res.status(400).json({ message: 'Image file is required' });
+      return;
+    }
+
+    const token = req.headers.authorization?.split(' ')[1];
+
+    if (!token) {
+      res.status(401).json({ message: 'Authorization token is required' });
+      return;
+    }
+
+    try {
+      const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
+      const distributorId = decoded.id;
+
+      if (!distributorId) {
+        res.status(400).json({ message: 'Invalid distributor ID from token' });
+        return;
+      }
+
+      const { orderId } = req.params;
+
+      // Ensure file exists before uploading
+      if (!req.file) {
+        res.status(400).json({ message: 'File is missing in the request' });
+        return;
+      }
+
+      // Cloudinary upload using a stream
+      const uploadResponse = cloudinary.uploader.upload_stream(
+        { folder: 'order-confirmation-photos' },
+        async (error, result) => {
+          if (error) {
+            res.status(400).json({ message: 'Error uploading to Cloudinary', error: error.message });
+            return;
+          }
+
+          // Check if result is defined before proceeding
+          if (!result) {
+            res.status(400).json({ message: 'Cloudinary upload failed' });
+            return;
+          }
+
+          // Proceed with database update
+          const order = await prisma.order.findUnique({ where: { id: parseInt(orderId) } });
+
+          if (!order) {
+            res.status(404).json({ message: 'Order not found' });
+            return;
+          }
+
+          if (order.distributorId !== distributorId) {
+            res.status(403).json({ message: 'You are not authorized to update this order' });
+            return;
+          }
+
+          // Update confirmationPhotoUrl in the database
+          const updatedOrder = await prisma.order.update({
+            where: { id: parseInt(orderId) },
+            data: { confirmationPhotoUrl: result.secure_url },
+          });
+
+          res.status(200).json({
+            message: 'Confirmation photo updated successfully',
+            order: {
+              id: updatedOrder.id,
+              confirmationPhotoUrl: updatedOrder.confirmationPhotoUrl,
+            },
+          });
+        }
+      );
+
+      // Convert the buffer to a readable stream and pipe it to Cloudinary
+      const bufferStream = new stream.PassThrough();
+      bufferStream.end(req.file.buffer);  // End the stream with the file buffer
+      bufferStream.pipe(uploadResponse);
+
+    } catch (error) {
+      console.error('Error updating confirmation photo URL:', error);
+      res.status(500).json({ message: 'Internal Server Error', error: error });
+    }
+  });
 };

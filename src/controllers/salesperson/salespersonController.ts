@@ -326,6 +326,29 @@ export const getAllProducts = async (req: Request, res: Response): Promise<void>
       res.status(500).json({ message: 'Internal Server Error' });
     }
   };
+
+  export const getAllCategory = async (req: Request, res: Response): Promise<void> => {
+    try {
+      // Fetch all categories from the database
+      const categories = await prisma.category.findMany({
+        include: {
+          products: true, // Include products related to each category if needed
+        },
+      });
+  
+      // Check if categories are found
+      if (categories.length === 0) {
+        res.status(404).json({ message: 'No categories found' });
+        return;
+      }
+  
+      // Return the list of categories
+      res.status(200).json(categories);
+    } catch (error) {
+      console.error('Error fetching categories:', error); // Log the error for debugging
+      res.status(500).json({ message: 'Internal Server Error' });
+    }
+  };
   
   export const getShopkeepersBySalesperson = async (req: Request, res: Response) => {
     const { salespersonId } = req.params;
